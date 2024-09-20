@@ -1,2 +1,3 @@
+pub mod game;
 mod internals;
-mod game;
+mod movegen;

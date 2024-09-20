@@ -1,7 +1,6 @@
 use std::ops;
 
-
-
+use crate::game::Square;
 
 macro_rules! impl_op {
     ($trait:ident, $method:ident, $op:tt) => {
@@ -15,8 +14,24 @@ macro_rules! impl_op {
     };
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Hash, Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct BitBoard(pub(crate) u64);
+
+#[macro_export]
+macro_rules! bitboard {
+    ($a:expr, $b:expr, $c:expr, $d:expr, $e:expr, $f:expr, $g:expr, $h:expr) => {
+        BitBoard(
+            ($a as u64) << 0
+                | ($b as u64) << 8
+                | ($c as u64) << 16
+                | ($d as u64) << 24
+                | ($e as u64) << 32
+                | ($f as u64) << 40
+                | ($g as u64) << 48
+                | ($h as u64) << 56,
+        )
+    };
+}
 
 impl_op!(Add, add, +);
 impl_op!(Sub, sub, -);
@@ -84,8 +99,8 @@ impl BitBoard {
         BitBoard(1u64 << square)
     }
 
-    pub(crate) const fn from_square(file: u8, rank: u8) -> BitBoard {
-        BitBoard(1 << (file + rank * 8))
+    pub(crate) const fn from_square(square: Square) -> BitBoard {
+        BitBoard(1 << (square.file.to_idx() + square.rank.to_idx() * 8))
     }
 
     pub(crate) const fn popcnt(&self) -> u32 {
@@ -96,7 +111,6 @@ impl BitBoard {
         self.0 == 0
     }
 }
-
 
 mod test {
     use super::*;
