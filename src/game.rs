@@ -298,7 +298,7 @@ struct Castling {
     long: bool,
 }
 
-struct Board {
+pub struct Board {
     pieces: [Pieces; 2],
     side: Color,
     en_passant: Option<BitBoard>,
