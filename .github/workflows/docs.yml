@@ -28,13 +28,13 @@ jobs:
       - name: Build docs
         run: cargo doc --no-deps
       - name: Add redirect
-        run: echo '<meta http-equiv="refresh" content="0;url=dexterws_chess/index.html">' > target/doc/index.html
+        run: echo '<meta http-equiv="refresh" content="0;url=dexterws_chess/index.html">' > target/doc/dexterws_chess/index.html
       - name: Remove lock file
         run: rm target/doc/.lock
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: target/doc
+          path: target/doc/dexterws_chess
   deploy:
     name: Deploy
     environment:
