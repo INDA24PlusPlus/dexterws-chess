@@ -42,3 +42,6 @@ let board = Board::new();
 // Get all the pieces on the board, in a [Option<Piece, Color>; 64]
 let pieces = board.get_all_pieces();
 ```
+
+## Questions
+If you have any questions regarding the library, do not hesitate to either open an issue or email me at `dexterws@kth.se`
