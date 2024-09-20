@@ -17,22 +17,6 @@ macro_rules! impl_op {
 #[derive(Hash, Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct BitBoard(pub(crate) u64);
 
-#[macro_export]
-macro_rules! bitboard {
-    ($a:expr, $b:expr, $c:expr, $d:expr, $e:expr, $f:expr, $g:expr, $h:expr) => {
-        BitBoard(
-            ($a as u64) << 0
-                | ($b as u64) << 8
-                | ($c as u64) << 16
-                | ($d as u64) << 24
-                | ($e as u64) << 32
-                | ($f as u64) << 40
-                | ($g as u64) << 48
-                | ($h as u64) << 56,
-        )
-    };
-}
-
 impl_op!(Add, add, +);
 impl_op!(Sub, sub, -);
 impl_op!(Mul, mul, *);
@@ -76,6 +60,7 @@ impl std::iter::Iterator for BitBoard {
     }
 }
 
+#[allow(dead_code)]
 impl BitBoard {
     pub(crate) const FULL: BitBoard = BitBoard(0xFFFFFFFFFFFFFFFF);
     pub(crate) const FILE_A: BitBoard = BitBoard(0x0101010101010101);
@@ -113,16 +98,6 @@ impl BitBoard {
 }
 
 mod test {
-    use super::*;
-
-    #[test]
-    fn test_add() {
-        let a = BitBoard(0x0000000000000001);
-        let b = BitBoard(0x0000000000000002);
-        let c = a + b;
-        assert_eq!(c.0, 0x0000000000000003);
-    }
-
     #[test]
     fn test_iter() {
         let a = BitBoard(0b0000000000001001);

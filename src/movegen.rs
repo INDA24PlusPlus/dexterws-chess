@@ -54,8 +54,13 @@ pub(crate) fn pawn_moves(
     let (own, other) = ctx;
     let position = pawn.to_bitboard();
 
-    let single_pushes = pawn_single_pushes(color, position) & (!own | !other);
-    let double_pushes = pawn_double_pushes(color, position) & (!own | !other);
+    let single_pushes = pawn_single_pushes(color, position) & !own & !other;
+    // Double pushes are only possible if the single pushes are not blocked
+    let double_pushes = if single_pushes != BitBoard(0) {
+        pawn_double_pushes(color, position) & !own & !other
+    } else {
+        BitBoard(0)
+    };
     let attacks =
         pawn_pseudo_attacks(color, position) & (other | en_passant.unwrap_or(BitBoard(0)));
 
@@ -79,13 +84,25 @@ pub(crate) fn pawn_moves(
 }
 
 pub(crate) fn knight_bitboard_moves(knight: Square, ctx: (BitBoard, BitBoard)) -> BitBoard {
-    let (own, other) = ctx;
+    let (own, _other) = ctx;
     let position = knight.to_bitboard();
 
-    let jumps = ((position.0 << 17 | position.0 >> 15) & !BitBoard::FILE_A.0
-        | (position.0 << 15 | position.0 >> 17) & !BitBoard::FILE_H.0
-        | (position.0 << 10 | position.0 >> 6) & !(BitBoard::FILE_G.0 | BitBoard::FILE_H.0)
-        | (position.0 << 6 | position.0 >> 10) & !(BitBoard::FILE_A.0 | BitBoard::FILE_B.0))
+    // U64 noNoEa(U64 b) {return (b << 17) & notAFile ;}
+    // U64 noEaEa(U64 b) {return (b << 10) & notABFile;}
+    // U64 soEaEa(U64 b) {return (b >>  6) & notABFile;}
+    // U64 soSoEa(U64 b) {return (b >> 15) & notAFile ;}
+    // U64 noNoWe(U64 b) {return (b << 15) & notHFile ;}
+    // U64 noWeWe(U64 b) {return (b <<  6) & notGHFile;}
+    // U64 soWeWe(U64 b) {return (b >> 10) & notGHFile;}
+    // U64 soSoWe(U64 b) {return (b >> 17) & notHFile ;}
+    let jumps = ((position.0 << 17 & !BitBoard::FILE_A.0)
+        | (position.0 << 10 & !BitBoard::FILE_A.0 & !BitBoard::FILE_B.0)
+        | (position.0 >> 6 & !BitBoard::FILE_A.0 & !BitBoard::FILE_B.0)
+        | (position.0 >> 15 & !BitBoard::FILE_A.0)
+        | (position.0 << 15 & !BitBoard::FILE_H.0)
+        | (position.0 << 6 & !BitBoard::FILE_G.0 & !BitBoard::FILE_H.0)
+        | (position.0 >> 10 & !BitBoard::FILE_G.0 & !BitBoard::FILE_H.0)
+        | (position.0 >> 17 & !BitBoard::FILE_H.0))
         // Remove own pieces
         & (!own).0;
     BitBoard(jumps)
@@ -157,7 +174,6 @@ impl Direction {
         let dx = to.file.to_idx() as i8 - from.file.to_idx() as i8;
         let dy = to.rank.to_idx() as i8 - from.rank.to_idx() as i8;
         let diag = dx.abs() == dy.abs();
-        let orth = dx == 0 || dy == 0;
         match (dx, dy) {
             (0, y) if y > 0 => Direction::North,
             (0, y) if y < 0 => Direction::South,
@@ -217,7 +233,7 @@ pub(crate) fn get_slider_moves(
     directions: &[Direction],
     ctx: (BitBoard, BitBoard),
 ) -> Vec<Move> {
-    let mut slides = directions
+    let slides = directions
         .iter()
         .map(|dir| get_slide_direction_bitboard(piece, *dir, ctx))
         .fold(BitBoard(0), |acc, x| acc | x);
@@ -253,16 +269,12 @@ pub(crate) fn rook_xrays(rook: Square) -> BitBoard {
     get_slider_xrays(rook, &ORTHAGONALS)
 }
 
-pub(crate) fn queen_moves(queen: Square, ctx: (BitBoard, BitBoard)) -> Vec<Move> {
-    get_slider_moves(queen, &ALL_DIRECTIONS, ctx)
-}
-
 pub(crate) fn queen_xrays(queen: Square) -> BitBoard {
     get_slider_xrays(queen, &ALL_DIRECTIONS)
 }
 
 pub(crate) fn king_moves(king: Square, ctx: (BitBoard, BitBoard)) -> Vec<Move> {
-    let (own, other) = ctx;
+    let (own, _other) = ctx;
     let position = king.to_bitboard();
 
     let walks = (position.0 << 8
@@ -296,31 +308,4 @@ pub(crate) fn xray_subsection(from: Square, to: Square) -> BitBoard {
         ray = ray | pos;
     }
     ray
-}
-
-mod test {
-    use crate::{game::Square, square};
-
-    #[test]
-    pub fn test_pawn_pseudo_attacks() {
-        use crate::game::Color;
-        use crate::internals::BitBoard;
-    }
-
-    pub fn test_rook_moves() {
-        use crate::game::Color;
-        use crate::internals::BitBoard;
-        let rook = square!(Four, D);
-        let moves = super::rook_moves(rook, (BitBoard(0), BitBoard(0)));
-        let mut moves_total = BitBoard(0);
-        for m in moves {
-            moves_total = moves_total | m.to().to_bitboard();
-        }
-    }
-
-    #[test]
-    fn test_bishop_moves() {
-        use crate::game::Color;
-        use crate::internals::BitBoard;
-    }
 }

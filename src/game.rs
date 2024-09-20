@@ -1,12 +1,13 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use crate::movegen::{
-    bishop_moves, bishop_xrays, get_slide_direction_bitboard, get_slider_moves, get_slider_xrays,
-    king_moves, knight_bitboard_moves, knight_moves, pawn_pseudo_attacks, queen_xrays, rook_moves,
-    rook_xrays, xray_subsection, Direction, DIAGONALS,
+    bishop_moves, bishop_xrays, get_slide_direction_bitboard, get_slider_xrays, king_moves,
+    knight_bitboard_moves, knight_moves, pawn_pseudo_attacks, queen_xrays, rook_moves, rook_xrays,
+    xray_subsection, Direction, DIAGONALS,
 };
-use crate::{bitboard, internals::BitBoard, movegen::pawn_moves};
+use crate::{internals::BitBoard, movegen::pawn_moves};
 
+/// A chess piece type
 #[derive(Hash, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Piece {
     King,
@@ -17,12 +18,14 @@ pub enum Piece {
     Pawn,
 }
 
+/// Color of player or piece
 #[derive(Hash, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Color {
     White,
     Black,
 }
 
+/// A rank on the board
 #[derive(Hash, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Rank {
     One,
@@ -36,8 +39,9 @@ pub enum Rank {
 }
 
 impl Rank {
+    #[allow(dead_code)]
     /// Convert a rank to a bitboard
-    pub fn to_bitboard(&self) -> BitBoard {
+    fn to_bitboard(&self) -> BitBoard {
         match self {
             Rank::One => BitBoard::RANK_1,
             Rank::Two => BitBoard::RANK_2,
@@ -83,6 +87,7 @@ impl Rank {
     }
 }
 
+/// A file on the board
 #[derive(Hash, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum File {
     A,
@@ -96,8 +101,9 @@ pub enum File {
 }
 
 impl File {
+    #[allow(dead_code)]
     /// Convert a file to a bitboard
-    pub fn to_bitboard(&self) -> BitBoard {
+    fn to_bitboard(&self) -> BitBoard {
         match self {
             File::A => BitBoard::FILE_A,
             File::B => BitBoard::FILE_B,
@@ -146,8 +152,8 @@ impl File {
 /// A square on the board
 #[derive(Hash, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Square {
-    pub rank: Rank,
     pub file: File,
+    pub rank: Rank,
 }
 
 impl std::fmt::Display for Square {
@@ -165,11 +171,11 @@ impl std::fmt::Display for Square {
 ///
 /// # Example
 /// ```
-/// let square = square!(One, A);
+/// let square = square!(A, One);
 /// ```
 #[macro_export(local_inner_macros)]
 macro_rules! square {
-    ($rank:ident, $file:ident) => {{
+    ($file:ident, $rank:ident) => {{
         use $crate::game::{File, Rank, Square};
         Square::new(Rank::$rank, File::$file)
     }};
@@ -177,7 +183,7 @@ macro_rules! square {
 
 impl Square {
     /// Create a new square from a rank and file
-    pub fn new(rank: Rank, file: File) -> Self {
+    pub fn new(file: File, rank: Rank) -> Self {
         Square { rank, file }
     }
 
@@ -198,7 +204,7 @@ impl Square {
     pub fn from_idx(idx: u8) -> Square {
         let rank = Rank::from_idx(idx / 8);
         let file = File::from_idx(idx % 8);
-        Square::new(rank, file)
+        Square::new(file, rank)
     }
 
     pub(crate) fn from_bitboard(bitboard: BitBoard) -> Square {
@@ -215,14 +221,24 @@ pub struct Move {
     promotion: Option<Piece>,
 }
 
+/// Create a move from a tuple of two squares
+/// The first square is the origin square, and the second square is the destination square
+/// The promotion piece is set to None
+/// 
+/// # Example
+/// ```
+/// let m = mv!((E, 2), (E, 4));
+/// ```
 #[macro_export(local_inner_macros)]
 macro_rules! mv {
-    (($from_file:ident, $from_rank:ident), ($to_file:ident, $to_rank:ident)) => {
-        {
-            use $crate::game::Move;
-            Move::new(square!($from_rank, $from_file), square!($to_rank, $to_file), None)
-        }
-    };
+    (($from_file:ident, $from_rank:ident), ($to_file:ident, $to_rank:ident)) => {{
+        use $crate::game::Move;
+        Move::new(
+            square!($from_rank, $from_file),
+            square!($to_rank, $to_file),
+            None,
+        )
+    }};
 }
 
 impl std::fmt::Display for Move {
@@ -298,6 +314,9 @@ struct Castling {
     long: bool,
 }
 
+/// A chess board
+/// this contains all the necessary information to represent a chess position
+/// and to make and generate moves on the board
 pub struct Board {
     pieces: [Pieces; 2],
     side: Color,
@@ -310,6 +329,7 @@ pub struct Board {
     seen_positions: HashMap<([Pieces; 2], Color), usize>,
 }
 
+/// The result of a game
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GameResult {
     Checkmate { winner: Color },
@@ -321,8 +341,9 @@ pub enum GameResult {
 }
 
 impl Board {
-    fn new() -> Self {
-        Board {
+    /// Creates a new board with the default starting position
+    pub fn new() -> Self {
+        let mut board = Board {
             pieces: [
                 Pieces {
                     kings: BitBoard(1 << 4),
@@ -358,9 +379,13 @@ impl Board {
             half_move_clock: 0,
             full_move_number: 0,
             seen_positions: HashMap::new(),
-        }
+        };
+        board.seen_positions.insert((board.pieces, board.side), 1);
+        board.pins_and_checks();
+        board
     }
 
+    /// Get a bitboard of the pieces of a given color
     fn colored(&self, color: Color) -> BitBoard {
         let piece_set = self.pieces[color as usize];
         piece_set.kings
@@ -371,6 +396,7 @@ impl Board {
             | piece_set.pawns
     }
 
+    /// Get a bitboard of a specific piece of a given color
     fn colored_piece(&self, color: Color, piece: Piece) -> BitBoard {
         let piece_set = self.pieces[color as usize];
         match piece {
@@ -383,6 +409,7 @@ impl Board {
         }
     }
 
+    /// Get a mutable reference to a specific piece of a given color
     fn colored_piece_mut(&mut self, color: Color, piece: Piece) -> &mut BitBoard {
         let piece_set = &mut self.pieces[color as usize];
         match piece {
@@ -395,22 +422,36 @@ impl Board {
         }
     }
 
+    /// Get a set of all the pieces of a given color
     fn colored_piece_set(&self, color: Color) -> Pieces {
         self.pieces[color as usize]
     }
 
+    /// Get a bitboard of all the pieces on the board
     fn all(&self) -> BitBoard {
         self.colored(Color::White) | self.colored(Color::Black)
     }
 
+    #[allow(dead_code)]
+    /// Get a bitboard of all the empty squares on the board
     fn empty(&self) -> BitBoard {
         !self.all()
     }
 
+    /// Get a bitboard of the king of a given color
     fn king(&self, color: Color) -> BitBoard {
         self.colored_piece(color, Piece::King)
     }
 
+    /// Try to get the piece at a given square
+    /// Returns None if there is no piece at the square
+    ///
+    /// # Example
+    /// ```
+    /// let board = Board::new();
+    /// let piece = board.get_piece(square!(E, 2));
+    /// assert_eq!(piece, Some((Color::White, Piece::Pawn)));
+    /// ```
     pub fn get_piece(&self, square: Square) -> Option<(Color, Piece)> {
         let bitboard = square.to_bitboard();
         let is_white = self.colored(Color::White) & bitboard != BitBoard(0);
@@ -438,6 +479,8 @@ impl Board {
         Some((color, piece))
     }
 
+    // Does all the handling to check for pinned pieces
+    // and pieces that are checking the king
     fn pins_and_checks(&mut self) {
         let enemy_king = self.king(!self.side);
         let king_sq = Square::from_bitboard(enemy_king);
@@ -464,7 +507,7 @@ impl Board {
             let to = king_sq;
             let ray = xray_subsection(from, to);
             let blockers = ray & self.all();
-            match blockers.0 {
+            match blockers.popcnt() {
                 0 => {
                     self.checking = self.checking | BitBoard::from_idx(attacker);
                 }
@@ -534,6 +577,8 @@ impl Board {
         valid_moves
     }
 
+    // -----------
+    // All functions to get the legal moves of pieces
     fn get_bishop_moves(&self, origin: Square) -> Vec<Move> {
         let own = self.colored(self.side);
         let enemy = self.colored(!self.side);
@@ -583,8 +628,7 @@ impl Board {
         valid_moves
     }
 
-    fn is_king_safe(&self, square: Square) -> bool {
-        let king = self.king(self.side);
+    fn can_king_stay(&self, square: Square) -> bool {
         let own = self.colored(self.side) & !square.to_bitboard();
         let enemy = self.colored(!self.side);
         let ctx = (own, enemy);
@@ -622,7 +666,11 @@ impl Board {
             .iter()
             .any(|m| m.to().to_bitboard() & enemy_king != BitBoard(0));
 
-        !(bishop_intersects || rook_intersects || knight_intersects || pawn_intersects)
+        !(bishop_intersects
+            || rook_intersects
+            || knight_intersects
+            || pawn_intersects
+            || king_intersects)
     }
 
     fn get_castling(&self) -> Vec<Move> {
@@ -631,12 +679,13 @@ impl Board {
         if !castling_rights.long && !castling_rights.short {
             return vec![];
         }
-        let own = self.colored(self.side);
-        let enemy = self.colored(!self.side);
-        let ctx = (own, enemy);
 
         let own_king_sq = Square::from_bitboard(own_king);
-        let own_king_safe = self.is_king_safe(own_king_sq);
+        let own_king_safe = self.can_king_stay(own_king_sq);
+        if !own_king_safe {
+            return vec![];
+        }
+
         let own_back_rank = match self.side {
             Color::White => Rank::One,
             Color::Black => Rank::Eight,
@@ -653,19 +702,19 @@ impl Board {
             .iter()
             .filter_map(|&[rook_file, king_to_file]| {
                 // Look if the path between the rook and king is empty
-                let rook_square = Square::new(own_back_rank, rook_file);
+                let rook_square = Square::new(rook_file, own_back_rank);
                 let ray = xray_subsection(own_king_sq, rook_square);
                 let blockers = ray & self.all();
                 let is_clear = blockers.is_empty();
 
                 // Look if the king can walk to the destination square without walking through a check
-                let king_to_square = Square::new(own_back_rank, king_to_file);
+                let king_to_square = Square::new(king_to_file, own_back_rank);
                 // King cannot be in check on the destination square
                 let ray_to_walk =
                     xray_subsection(own_king_sq, king_to_square) | king_to_square.to_bitboard();
                 let is_safe = ray_to_walk
                     .into_iter()
-                    .all(|idx| self.is_king_safe(Square::from_idx(idx)));
+                    .all(|idx| self.can_king_stay(Square::from_idx(idx)));
 
                 if is_clear && is_safe {
                     let m = Move::new(own_king_sq, rook_square, None);
@@ -683,21 +732,23 @@ impl Board {
         let moves = king_moves(origin, ctx);
         let valid_moves = moves
             .into_iter()
-            .filter(|m| self.is_king_safe(m.to()))
+            .filter(|m| self.can_king_stay(m.to()))
             .collect();
         let castle_moves = self.get_castling();
         [valid_moves, castle_moves].concat()
     }
+    // -----------
 
     /// Make a move on the board
-    /// 
+    ///
     /// # Errors
     /// Returns an error if the move is illegal
     pub fn make_move(&mut self, m: Move) -> Result<GameResult, &'static str> {
-        let mut all_moves: HashSet<Move> = HashSet::from_iter(self.all_moves().into_iter());
-        if !all_moves.contains(&m) {
+        let is_legal = self.all_moves().iter().any(|mv| *mv == m);
+        if !is_legal {
             return Err("Illegal move");
         }
+
         let from = m.from();
         let to = m.to();
 
@@ -727,42 +778,39 @@ impl Board {
             *pieces = *pieces | to.to_bitboard();
         } else {
             // Get the files and change castling rights depending on which side to castle to
-            let (rook_file, king_to_file, rook_to_file) = match to.file {
+            let (king_to_file, rook_to_file) = match to.file {
                 LONG => {
                     self.castling[self.side as usize].long = false;
-                    (LONG, LONG_KING_TO, LONG_ROOK_TO)
+                    (LONG_KING_TO, LONG_ROOK_TO)
                 }
                 SHORT => {
                     self.castling[self.side as usize].short = false;
-                    (SHORT, SHORT_KING_TO, SHORT_ROOK_TO)
+                    (SHORT_KING_TO, SHORT_ROOK_TO)
                 }
                 _ => return Err("Invalid castling move"),
             };
 
             let rook = self.colored_piece_mut(color, Piece::Rook);
-            let rook_to_sq = Square::new(from.rank, rook_to_file);
+            let rook_to_sq = Square::new(rook_to_file, from.rank);
             *rook = *rook & !to.to_bitboard();
             *rook = *rook | rook_to_sq.to_bitboard();
 
             let king = self.colored_piece_mut(color, Piece::King);
-            let king_to_sq = Square::new(from.rank, king_to_file);
+            let king_to_sq = Square::new(king_to_file, from.rank);
             *king = *king & !from.to_bitboard();
             *king = *king | king_to_sq.to_bitboard();
         }
 
-        self.en_passant = None;
         match piece {
             Piece::King => {
                 self.castling[self.side as usize].long = false;
                 self.castling[self.side as usize].short = false;
             }
-            Piece::Rook => {
-                match from.file {
-                    LONG => self.castling[self.side as usize].long = false,
-                    SHORT => self.castling[self.side as usize].short = false,
-                    _ => {}
-                }
-            }
+            Piece::Rook => match from.file {
+                LONG => self.castling[self.side as usize].long = false,
+                SHORT => self.castling[self.side as usize].short = false,
+                _ => {}
+            },
             Piece::Pawn => {
                 self.half_move_clock = 0;
                 // Can be cleared since a pawn move is not reversible
@@ -774,15 +822,23 @@ impl Board {
                     let promoted = self.colored_piece_mut(color, piece);
                     *promoted = *promoted | to.to_bitboard();
                 }
+                // Check if pawn is capturing en passant
+                if self.en_passant == Some(to.to_bitboard()) {
+                    let captured_sq = Square::new(to.file, from.rank);
+                    let captured = self.colored_piece_mut(!color, Piece::Pawn);
+                    *captured = *captured & !captured_sq.to_bitboard();
+                }
+
+                self.en_passant = None;
 
                 // Check if the move is a double pawn push
                 match (from.rank, to.rank) {
                     (Rank::Two, Rank::Four) => {
-                        let en_passant_sq = Square::new(Rank::Three, to.file);
+                        let en_passant_sq = Square::new(to.file, Rank::Three);
                         self.en_passant = Some(en_passant_sq.to_bitboard());
                     }
                     (Rank::Seven, Rank::Five) => {
-                        let en_passant_sq = Square::new(Rank::Six, to.file);
+                        let en_passant_sq = Square::new(to.file, Rank::Six);
                         self.en_passant = Some(en_passant_sq.to_bitboard());
                     }
                     _ => {}
@@ -796,21 +852,18 @@ impl Board {
             self.full_move_number += 1;
         }
 
-        let pos_count = match self.seen_positions.get_mut(&(self.pieces, self.side)) {
-            Some(count) => {
-                *count += 1;
-                *count
-            }
-            None => {
-                self.seen_positions.insert((self.pieces, self.side), 1);
-                1
-            }
-        };
-
-
         // Update pins and switch sides
         self.pins_and_checks();
         self.side = !self.side;
+
+        match self.seen_positions.get_mut(&(self.pieces, self.side)) {
+            Some(count) => {
+                *count += 1;
+            }
+            None => {
+                self.seen_positions.insert((self.pieces, self.side), 1);
+            }
+        };
 
         let result = self.get_game_result();
         Ok(result)
@@ -856,7 +909,7 @@ impl Board {
     }
 
     /// Get the result of the game
-    /// 
+    ///
     /// Note: This does not take into account the 3 fold repetition rule
     /// that check is done in the `make_move` function
     pub fn get_game_result(&mut self) -> GameResult {
@@ -866,7 +919,7 @@ impl Board {
         let ctx = (own, enemy);
         let own_king_sq = Square::from_bitboard(own_king);
         let own_king_moves = king_moves(own_king_sq, ctx);
-        let own_king_safe = own_king_moves.iter().all(|m| self.is_king_safe(m.to()));
+        let own_king_safe = own_king_moves.iter().all(|m| self.can_king_stay(m.to()));
 
         let own_moves = self.all_moves();
         let own_moves_len = own_moves.len();
@@ -879,11 +932,7 @@ impl Board {
             Some(count) => *count,
             None => 0,
         };
-
-        for m in own_moves {
-            println!("{}", m);
-        }
-
+        println!("{}", pos_count);
 
         if own_moves_empty {
             if own_checking_empty {
@@ -934,7 +983,10 @@ impl Board {
             }
         }
         pieces
+    }
 
+    pub fn is_checked(&self) -> bool {
+        !self.checking.is_empty()
     }
 }
 
@@ -950,7 +1002,7 @@ impl std::fmt::Display for Board {
                     board.push_str("\x1b[43m");
                 }
                 i += 1;
-                let square = Square::new(Rank::from_idx(rank), File::from_idx(file));
+                let square = Square::new(File::from_idx(file), Rank::from_idx(rank));
                 let piece = self.get_piece(square);
                 let piece_str = match piece {
                     Some((Color::White, Piece::King)) => "♔ ",
@@ -976,13 +1028,7 @@ impl std::fmt::Display for Board {
     }
 }
 
-struct State {
-    board: Board,
-}
-
 mod test {
-    use crate::internals::BitBoard;
-
     #[test]
     pub fn test_get_piece() {
         use crate::game::{Board, Color, Piece, Square};
@@ -990,30 +1036,6 @@ mod test {
         let piece = board.get_piece(Square::from_idx(0));
         println!("{:?}", piece);
         assert_eq!(piece, Some((Color::White, Piece::Rook)));
-    }
-
-    #[test]
-    pub fn test_bishop_moves() {
-        use crate::game::{Board, Color, Piece, Square, *};
-        let board = Board::new();
-        let moves = board.get_bishop_moves(Square::new(Rank::Five, File::C));
-        let mut m = BitBoard(0);
-        for mv in moves {
-            m = m | mv.to().to_bitboard();
-        }
-        println!("{}", m);
-    }
-
-    #[test]
-    pub fn test_knight_moves() {
-        use crate::game::{Board, Color, Piece, Square, *};
-        let board = Board::new();
-        let moves = board.get_knight_moves(Square::new(Rank::Five, File::C));
-        let mut m = BitBoard(0);
-        for mv in moves {
-            m = m | mv.to().to_bitboard();
-        }
-        println!("{}", m);
     }
 
     #[test]
@@ -1068,12 +1090,10 @@ mod test {
         let moves = vec![
             Move::new(square!(Two, E), square!(Four, E), None),
             Move::new(square!(Seven, E), square!(Five, E), None),
-            Move::new(square!(Two, F), square!(Three, F), None),
+            Move::new(square!(One, F), square!(Two, E), None),
             Move::new(square!(Seven, D), square!(Six, D), None),
-            Move::new(square!(One, F), square!(Three, G), None),
+            Move::new(square!(One, G), square!(Three, F), None),
             Move::new(square!(Six, D), square!(Five, D), None),
-            Move::new(square!(One, G), square!(Two, F), None),
-            Move::new(square!(Five, D), square!(Four, D), None),
             Move::new(square!(One, E), square!(One, H), None),
         ];
         for m in moves {
@@ -1096,24 +1116,21 @@ mod test {
         let moves = vec![
             Move::new(square!(Two, E), square!(Four, E), None),
             Move::new(square!(Seven, E), square!(Five, E), None),
-            Move::new(square!(Two, F), square!(Three, F), None),
+            Move::new(square!(One, F), square!(Two, E), None),
             Move::new(square!(Seven, D), square!(Six, D), None),
-            Move::new(square!(One, F), square!(Three, G), None),
+            Move::new(square!(One, G), square!(Three, F), None),
             Move::new(square!(Six, D), square!(Five, D), None),
-            Move::new(square!(One, G), square!(Two, F), None),
-            Move::new(square!(Five, D), square!(Four, D), None),
             Move::new(square!(One, H), square!(One, G), None),
-            Move::new(square!(Seven, A), square!(Six, A), None),
+            Move::new(square!(Five, D), square!(Four, D), None),
             Move::new(square!(One, G), square!(One, H), None),
-            Move::new(square!(Six, A), square!(Five, A), None),
+            Move::new(square!(Seven, A), square!(Six, A), None),
             Move::new(square!(One, E), square!(One, H), None),
         ];
         for m in &moves {
             let result = board.make_move(*m);
-            println!("{}", board);
             match result {
                 Err(e) => {
-                    if *m == moves[12] {
+                    if *m == *moves.last().unwrap() {
                         return;
                     }
                     assert!(false, "{}", e);
@@ -1151,10 +1168,7 @@ mod test {
             mv!((C, Eight), (E, Six)),
         ];
         for m in moves {
-            println!("{}", m);
             let result = board.make_move(*m);
-            println!("{}", board);
-            println!("{}", board.pinned);
             match result {
                 Err(e) => {
                     assert!(false, "{}", e);
@@ -1166,5 +1180,68 @@ mod test {
             }
         }
         assert!(false, "{}", "Game did not end");
+    }
+
+    #[test]
+    pub fn test_three_fold() {
+        use crate::game::{Board, Color, Piece, Square, *};
+        let mut board = Board::new();
+        let moves = &[
+            mv!((G, One), (F, Three)),
+            mv!((G, Eight), (F, Six)),
+            mv!((F, Three), (G, One)),
+            mv!((F, Six), (G, Eight)),
+            mv!((G, One), (F, Three)),
+            mv!((G, Eight), (F, Six)),
+            mv!((F, Three), (G, One)),
+            mv!((F, Six), (G, Eight)),
+            mv!((G, One), (F, Three)),
+        ];
+        for m in moves {
+            let result = board.make_move(*m);
+            match result {
+                Err(e) => {
+                    assert!(false, "{}", e);
+                }
+                Ok(GameResult::ThreefoldRepetition) => {
+                    return;
+                }
+                _ => (),
+            }
+        }
+        assert!(false, "{}", "Game did not end");
+    }
+
+    #[test]
+    pub fn test_en_passant() {
+        use crate::game::{Board, Color, Piece, Square, *};
+        let mut board = Board::new();
+        let moves = &[
+            mv!((E, Two), (E, Four)),
+            mv!((D, Seven), (D, Five)),
+            mv!((E, Four), (E, Five)),
+        ];
+        for m in moves {
+            let result = board.make_move(*m);
+            match result {
+                Err(e) => {
+                    assert!(false, "{}", e);
+                }
+                _ => (),
+            }
+        }
+        assert!(board.en_passant.is_none());
+        board.make_move(mv!((F, Seven), (F, Five)));
+        assert_eq!(board.en_passant, Some(square!(Six, F).to_bitboard()));
+        let moves = &[mv!((E, Five), (F, Six))];
+        for m in moves {
+            let result = board.make_move(*m);
+            match result {
+                Err(e) => {
+                    assert!(false, "{}", e);
+                }
+                _ => (),
+            }
+        }
     }
 }
