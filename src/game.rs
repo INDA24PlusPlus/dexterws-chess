@@ -987,22 +987,22 @@ impl Board {
         pieces
     }
 
-    // Returns true if current side is in check
+    /// Returns true if current side is in check
     pub fn is_checked(&self) -> bool {
         !self.checking.is_empty()
     }
 
-    // Get the current side
+    /// Get the current side
     pub fn side(&self) -> Color {
         self.side
     }
 
-    // Get the half move clock
+    /// Get the half move clock
     pub fn half_move_clock(&self) -> u8 {
         self.half_move_clock
     }
 
-    // Get the full move number
+    /// Get the full move number
     pub fn full_move_number(&self) -> u64 {
         self.full_move_number
     }
