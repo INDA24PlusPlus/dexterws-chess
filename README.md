@@ -1,4 +1,7 @@
 # Dexterws Chess
+## General information
+This library makes use of bitboards for the move generation, this is not really necessary as speed is a negligible factor in the upcoming stages, however I have worked with them a bit before when creating an [MCTS Ataxx Engine](https://github.com/BlueKossa/mcts-ataxx) ([Original](https://github.com/crippa1337/GYARB)) so I thought it would be fun to implement in chess too.
+
 ## Install
 Add the library to your project by adding the following to your `Cargo.toml`:
 ```toml
@@ -42,6 +45,11 @@ let board = Board::new();
 // Get all the pieces on the board, in a [Option<Piece, Color>; 64]
 let pieces = board.get_all_pieces();
 ```
+
+## Credits
+A large portion of the logic for the bitboard logic etc can be found on the [Chess Programming Wiki](https://www.chessprogramming.org/Main_Page).
+
+The [Stockfish Engine Dev Discord](https://discord.com/invite/GWDRS3kU6R) has also been very helpful.
 
 ## Questions
 If you have any questions regarding the library, do not hesitate to either open an issue or email me at `dexterws@kth.se`
