@@ -214,6 +214,8 @@ impl Square {
 }
 
 /// A struct representing a move on the board
+/// 
+/// Note: There is one special case for moves, castling moves are represented as a king move capturing a rook
 #[derive(Hash, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Move {
     from: Square,
@@ -985,8 +987,24 @@ impl Board {
         pieces
     }
 
+    // Returns true if current side is in check
     pub fn is_checked(&self) -> bool {
         !self.checking.is_empty()
+    }
+
+    // Get the current side
+    pub fn side(&self) -> Color {
+        self.side
+    }
+
+    // Get the half move clock
+    pub fn half_move_clock(&self) -> u8 {
+        self.half_move_clock
+    }
+
+    // Get the full move number
+    pub fn full_move_number(&self) -> u64 {
+        self.full_move_number
     }
 }
 
