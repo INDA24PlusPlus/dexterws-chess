@@ -934,7 +934,6 @@ impl Board {
             Some(count) => *count,
             None => 0,
         };
-        println!("{}", pos_count);
 
         if own_moves_empty {
             if own_checking_empty {
