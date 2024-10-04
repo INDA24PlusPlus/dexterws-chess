@@ -177,7 +177,7 @@ impl std::fmt::Display for Square {
 macro_rules! square {
     ($file:ident, $rank:ident) => {{
         use $crate::game::{File, Rank, Square};
-        Square::new(Rank::$rank, File::$file)
+        Square::new(File::$file, Rank::$rank)
     }};
 }
 
@@ -236,8 +236,8 @@ macro_rules! mv {
     (($from_file:ident, $from_rank:ident), ($to_file:ident, $to_rank:ident)) => {{
         use $crate::game::Move;
         Move::new(
-            square!($from_rank, $from_file),
-            square!($to_rank, $to_file),
+            square!($from_file, $from_rank),
+            square!($to_file, $to_rank),
             None,
         )
     }};
@@ -921,7 +921,7 @@ impl Board {
         let ctx = (own, enemy);
         let own_king_sq = Square::from_bitboard(own_king);
         let own_king_moves = king_moves(own_king_sq, ctx);
-        let own_king_safe = own_king_moves.iter().all(|m| self.can_king_stay(m.to()));
+        let own_king_safe = own_king_moves.iter().any(|m| self.can_king_stay(m.to()));
 
         let own_moves = self.all_moves();
         let own_moves_len = own_moves.len();
@@ -1073,10 +1073,10 @@ mod test {
         use crate::game::{Board, Color, Piece, Square, *};
         let mut board = Board::new();
         let moves = vec![
-            Move::new(square!(Two, F), square!(Four, F), None),
-            Move::new(square!(Seven, E), square!(Five, E), None),
-            Move::new(square!(Two, G), square!(Four, G), None),
-            Move::new(square!(Eight, D), square!(Four, H), None),
+            mv!((F, Two), (F, Four)),
+            mv!((E, Seven), (E, Five)),
+            mv!((G, Two), (G, Four)),
+            mv!((D, Eight), (H, Four))
         ];
         for m in moves {
             let result = board.make_move(m);
@@ -1105,13 +1105,13 @@ mod test {
         use crate::game::{Board, Color, Piece, Square, *};
         let mut board = Board::new();
         let moves = vec![
-            Move::new(square!(Two, E), square!(Four, E), None),
-            Move::new(square!(Seven, E), square!(Five, E), None),
-            Move::new(square!(One, F), square!(Two, E), None),
-            Move::new(square!(Seven, D), square!(Six, D), None),
-            Move::new(square!(One, G), square!(Three, F), None),
-            Move::new(square!(Six, D), square!(Five, D), None),
-            Move::new(square!(One, E), square!(One, H), None),
+            mv!((E, Two), (E, Four)),
+            mv!((D, Seven), (D, Five)),
+            mv!((G, One), (F, Three)),
+            mv!((C, Seven), (C, Five)),
+            mv!((F, One), (E, Two)),
+            mv!((B, Seven), (B, Six)),
+            mv!((E, One), (G, One)),
         ];
         for m in moves {
             let result = board.make_move(m);
@@ -1123,7 +1123,7 @@ mod test {
             }
         }
         let king_pos = Square::from_bitboard(board.colored_piece(Color::White, Piece::King));
-        assert_eq!(king_pos, square!(One, G));
+        assert_eq!(king_pos, square!(G, One));
     }
 
     #[test]
@@ -1131,17 +1131,17 @@ mod test {
         use crate::game::{Board, Color, Piece, Square, *};
         let mut board = Board::new();
         let moves = vec![
-            Move::new(square!(Two, E), square!(Four, E), None),
-            Move::new(square!(Seven, E), square!(Five, E), None),
-            Move::new(square!(One, F), square!(Two, E), None),
-            Move::new(square!(Seven, D), square!(Six, D), None),
-            Move::new(square!(One, G), square!(Three, F), None),
-            Move::new(square!(Six, D), square!(Five, D), None),
-            Move::new(square!(One, H), square!(One, G), None),
-            Move::new(square!(Five, D), square!(Four, D), None),
-            Move::new(square!(One, G), square!(One, H), None),
-            Move::new(square!(Seven, A), square!(Six, A), None),
-            Move::new(square!(One, E), square!(One, H), None),
+            mv!((E, Two), (E, Four)),
+            mv!((D, Seven), (D, Five)),
+            mv!((F, One), (E, Two)),
+            mv!((D, Seven), (D, Six)),
+            mv!((G, One), (F, Three)),
+            mv!((D, Six), (D, Five)),
+            mv!((H, One), (G, One)),
+            mv!((D, Five), (D, Four)),
+            mv!((H, One), (H, Two)),
+            mv!((A, Seven), (A, Six)),
+            mv!((H, Two), (H, One)),
         ];
         for m in &moves {
             let result = board.make_move(*m);
@@ -1156,7 +1156,7 @@ mod test {
             }
         }
         let king_pos = Square::from_bitboard(board.colored_piece(Color::White, Piece::King));
-        assert_eq!(king_pos, square!(One, E));
+        assert_eq!(king_pos, square!(E, One));
     }
 
     #[test]
@@ -1249,7 +1249,7 @@ mod test {
         }
         assert!(board.en_passant.is_none());
         board.make_move(mv!((F, Seven), (F, Five)));
-        assert_eq!(board.en_passant, Some(square!(Six, F).to_bitboard()));
+        assert_eq!(board.en_passant, Some(square!(F, Six).to_bitboard()));
         let moves = &[mv!((E, Five), (F, Six))];
         for m in moves {
             let result = board.make_move(*m);

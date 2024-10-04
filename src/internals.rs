@@ -100,6 +100,7 @@ impl BitBoard {
 mod test {
     #[test]
     fn test_iter() {
+        use super::BitBoard;
         let a = BitBoard(0b0000000000001001);
         let mut iter = a.into_iter();
         assert_eq!(iter.next(), Some(0));
